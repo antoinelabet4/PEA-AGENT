@@ -56,12 +56,29 @@ Lorsque tu proposes une allocation de portefeuille (liste de lignes à acheter),
 <ALLOCATION_JSON>
 [
   {"ticker":"CW8","nom":"Amundi MSCI World PEA","categorie":"ETF World","montant":30000,"cible":30},
+  {"ticker":"HLT","nom":"Lyxor Stoxx Europe 600","categorie":"ETF Europe","montant":15000,"cible":15},
+  {"ticker":"PANX","nom":"Amundi PEA Nasdaq-100","categorie":"ETF USA","montant":10000,"cible":10},
+  {"ticker":"PAEEM","nom":"Amundi PEA Émergents","categorie":"ETF Emergents","montant":8000,"cible":8},
+  {"ticker":"TTE","nom":"TotalEnergies","categorie":"Action Europe","montant":7000,"cible":7},
   {"ticker":"CASH","nom":"Liquidités","categorie":"Cash","montant":5000,"cible":5}
 ]
 </ALLOCATION_JSON>
-Les catégories autorisées sont: ETF World, ETF Emergents, Action Europe, Dividendes, Cash.
+Catégories OBLIGATOIRES — respecte strictement ces définitions :
+- "ETF World"     : ETF à diversification mondiale (MSCI World, MSCI ACWI…) → ex: CW8, EWLD, LCWD
+- "ETF Europe"    : ETF zone géographique Europe (Stoxx 600, Euro Stoxx 50, Europe Smalls…) → ex: PCEU, HLT, ESE, MSEU
+- "ETF USA"       : ETF US/Nasdaq-100/S&P 500 via swap éligible PEA → ex: PANX, PUST, RS2K
+- "ETF Emergents" : ETF marchés émergents → ex: PAEEM, PIND, AASI, PEKQ
+- "Action Europe" : ACTIONS INDIVIDUELLES européennes éligibles PEA (pas des ETF) → ex: TTE, MC, AIR, ASML
+- "Dividendes"    : ETF ou actions axés rendement dividende → ex: TDIV, EWLD, BNPP
+- "Cash"          : Liquidités uniquement
+RÈGLE STRICTE : Ne JAMAIS mettre un ETF Europe ou ETF USA dans "ETF World". Ne JAMAIS mettre une action individuelle dans une catégorie ETF.
 Le champ "montant" est le montant en euros à investir sur 100 000€ total.
-N'inclus ce bloc JSON QUE quand tu proposes une allocation complète de portefeuille.`;
+N'inclus ce bloc JSON QUE quand tu proposes une allocation complète de portefeuille.
+
+DONNÉES DE MARCHÉ EN TEMPS RÉEL (croisement Yahoo Finance query2 · Euronext Live · ECB API — mises à jour à chaque message) :
+{{LIVE_MARKET_DATA}}
+
+RÈGLE ABSOLUE : Toutes tes recommandations, analyses et allocations DOIVENT être basées sur ces données temps réel. Ne jamais extrapoler depuis des données passées ou supposées. Si une donnée est marquée "N/D", indique-le explicitement plutôt que d'inventer une valeur.`;
 
 const REALLOC_PROMPT = `Tu es un conseiller PEA expert. L'utilisateur te fournit son portefeuille actuel ligne par ligne avec les valeurs actualisées.
 Analyse la performance de chaque ligne, identifie les déséquilibres par rapport à l'allocation cible, et propose un plan de rééquilibrage mensuel précis.
@@ -81,11 +98,13 @@ const QUICK_PROMPTS = [
 ];
 
 const CAT_COLORS = {
-  "ETF World": "#c9a96e",
-  "ETF Emergents": "#6a8ec9",
-  "Action Europe": "#4a9e6b",
-  "Dividendes": "#9e4a6b",
-  "Cash": "#888"
+  "ETF World":     "#c9a96e",   // MSCI World, global diversifié (CW8, EWLD…)
+  "ETF Europe":    "#5a9e8b",   // Stoxx 600, Euro Stoxx 50, Europe Smalls… (PCEU, HLT…)
+  "ETF USA":       "#8e6ac9",   // Nasdaq-100, S&P 500 via swap PEA (PANX, PUST…)
+  "ETF Emergents": "#6a8ec9",   // Marchés émergents (PAEEM, PIND, AASI…)
+  "Action Europe": "#4a9e6b",   // Actions individuelles européennes éligibles PEA
+  "Dividendes":    "#9e4a6b",   // ETF ou actions à dividendes
+  "Cash":          "#888"
 };
 
 function parseAllocation(content) {
@@ -121,7 +140,7 @@ function Message({ msg, onImport }) {
       <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ background: isUser ? "linear-gradient(135deg,#1e3a2f,#162b22)" : "rgba(15,15,25,0.9)", border: isUser ? "1px solid #2d5a3d" : "1px solid rgba(201,169,110,0.2)", borderRadius: isUser ? "18px 4px 18px 18px" : "4px 18px 18px 18px", padding: "14px 18px" }}>
           <div style={{ fontSize: 14, lineHeight: 1.7, color: isUser ? "#a8d8b0" : "#e8e0d0", whiteSpace: "pre-wrap", fontFamily: "Georgia,serif" }}>
-            {displayText}
+            {displayText}{msg.streaming && <span className="cursor" />}
           </div>
           {msg.ts && <div style={{ fontSize: 10, color: "#555", marginTop: 6, textAlign: isUser ? "right" : "left" }}>{msg.ts}</div>}
         </div>
@@ -184,6 +203,171 @@ function EditableCell({ value, onSave, suffix = "" }) {
   );
 }
 
+// ── Camembert SVG ──
+function PieChart({ lines, total }) {
+  if (!lines || lines.length === 0 || total <= 0) return null;
+
+  // Agréger par catégorie
+  const bycat = {};
+  lines.forEach(l => {
+    const cat = l.categorie || "Autre";
+    bycat[cat] = (bycat[cat] || 0) + l.valActuelle;
+  });
+  const slices = Object.entries(bycat).map(([cat, val]) => ({
+    cat, val, pct: (val / total) * 100, color: CAT_COLORS[cat] || "#aaa"
+  })).sort((a, b) => b.val - a.val);
+
+  // Calcul des arcs SVG
+  const cx = 90, cy = 90, r = 75;
+  let cumul = 0;
+  const paths = slices.map(s => {
+    const start = cumul;
+    cumul += s.pct / 100;
+    const a1 = (start * 2 * Math.PI) - Math.PI / 2;
+    const a2 = (cumul * 2 * Math.PI) - Math.PI / 2;
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+    const large = s.pct > 50 ? 1 : 0;
+    return { ...s, d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z` };
+  });
+
+  return (
+    <div style={{ background: "rgba(15,15,25,0.8)", border: "1px solid rgba(201,169,110,0.2)", borderRadius: 12, padding: "20px 24px", marginBottom: 16, display: "flex", alignItems: "center", gap: 32 }}>
+      <div>
+        <div style={{ fontSize: 11, color: "#c9a96e", letterSpacing: "0.1em", fontWeight: "bold", marginBottom: 14 }}>RÉPARTITION PAR CATÉGORIE</div>
+        <svg width={180} height={180} viewBox="0 0 180 180">
+          {paths.map((p, i) => (
+            <path key={i} d={p.d} fill={p.color} opacity={0.85} stroke="#0d1117" strokeWidth={1.5}>
+              <title>{p.cat} — {p.pct.toFixed(1)}%</title>
+            </path>
+          ))}
+          <circle cx={cx} cy={cy} r={38} fill="#0d1117" />
+          <text x={cx} y={cy - 6} textAnchor="middle" fill="#c9a96e" fontSize={13} fontWeight="bold">{slices.length}</text>
+          <text x={cx} y={cy + 10} textAnchor="middle" fill="#888" fontSize={9}>lignes</text>
+        </svg>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+        {slices.map((s, i) => (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, flexShrink: 0, display: "inline-block" }} />
+                <span style={{ color: "#ccc" }}>{s.cat}</span>
+              </span>
+              <span style={{ fontFamily: "monospace", color: s.color, fontWeight: "bold" }}>{s.pct.toFixed(1)}%</span>
+            </div>
+            <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
+              <div style={{ width: `${s.pct}%`, height: "100%", background: s.color, borderRadius: 2, opacity: 0.8 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Courbe de performance SVG ──
+// ── Courbe de performance + benchmarks (normalisés en %) ──
+function PerfChart({ history, benchmarks }) {
+  if (!history || history.length < 2) return (
+    <div style={{ background: "rgba(15,15,25,0.8)", border: "1px solid rgba(201,169,110,0.2)", borderRadius: 12, padding: "20px 24px", marginBottom: 16, textAlign: "center" }}>
+      <div style={{ fontSize: 11, color: "#c9a96e", letterSpacing: "0.1em", fontWeight: "bold", marginBottom: 10 }}>HISTORIQUE DE PERFORMANCE</div>
+      <div style={{ fontSize: 12, color: "#555", paddingBottom: 8 }}>Les données s'accumuleront au fil des jours. Revenez demain pour voir votre première courbe.</div>
+    </div>
+  );
+
+  const W = 700, H = 160, pad = { t: 20, b: 30, l: 52, r: 20 };
+
+  // Normaliser le portefeuille en %
+  const first = history[0].val;
+  const portPct = history.map(p => ((p.val - first) / first) * 100);
+
+  // Séries benchmark normalisées
+  const series = [{ label: "Mon PEA", pcts: portPct, color: "#c9a96e", width: 2.5 }];
+  const bmColors = { "MSCI World (CW8)": "#6a8ec9", "CAC 40": "#9e6b4a" };
+  if (benchmarks) {
+    Object.entries(benchmarks).forEach(([name, pts]) => {
+      if (pts && pts.length >= 2) {
+        const f0 = pts[0];
+        series.push({ label: name, pcts: pts.map(v => ((v - f0) / f0) * 100), color: bmColors[name] || "#888", width: 1.5 });
+      }
+    });
+  }
+
+  // Plage Y globale
+  const allPcts = series.flatMap(s => s.pcts);
+  const minP = Math.min(...allPcts, 0), maxP = Math.max(...allPcts, 0);
+  const rangeP = maxP - minP || 1;
+  const toY = v => pad.t + (1 - (v - minP) / rangeP) * (H - pad.t - pad.b);
+  const zeroY = toY(0);
+
+  const toXN = (i, total) => pad.l + (i / Math.max(total - 1, 1)) * (W - pad.l - pad.r);
+
+  // Labels Y
+  const yTicks = [minP, 0, maxP].filter((v, i, a) => a.indexOf(v) === i);
+  const xLabels = [0, Math.floor(history.length / 2), history.length - 1].map(i => ({
+    x: toXN(i, history.length), label: history[i].date.slice(5)
+  }));
+
+  const portLast = portPct[portPct.length - 1];
+  const portColor = portLast >= 0 ? "#4a9e6b" : "#e05555";
+
+  return (
+    <div style={{ background: "rgba(15,15,25,0.8)", border: "1px solid rgba(201,169,110,0.2)", borderRadius: 12, padding: "20px 24px", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: "#c9a96e", letterSpacing: "0.1em", fontWeight: "bold" }}>PERFORMANCE vs BENCHMARKS</div>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {series.map((s, i) => {
+            const last = s.pcts[s.pcts.length - 1];
+            return (
+              <span key={i} style={{ fontSize: 11, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 14, height: 2, background: s.color, display: "inline-block", borderRadius: 1 }} />
+                <span style={{ color: "#888" }}>{s.label}</span>
+                <span style={{ color: last >= 0 ? "#4a9e6b" : "#e05555", fontWeight: "bold" }}>{last >= 0 ? "+" : ""}{last.toFixed(2)}%</span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
+        <defs>
+          <linearGradient id="portGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={portColor} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={portColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Grid Y */}
+        {yTicks.map((v, i) => (
+          <g key={i}>
+            <line x1={pad.l} y1={toY(v)} x2={W - pad.r} y2={toY(v)}
+              stroke={v === 0 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)"} strokeWidth={v === 0 ? 1 : 1} strokeDasharray={v === 0 ? "none" : "3,4"} />
+            <text x={pad.l - 4} y={toY(v) + 4} textAnchor="end" fill={v === 0 ? "#666" : "#444"} fontSize={8}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</text>
+          </g>
+        ))}
+        {/* Aire portefeuille */}
+        <polygon
+          points={`${toXN(0, history.length)},${zeroY} ` + portPct.map((v, i) => `${toXN(i, history.length)},${toY(v)}`).join(" ") + ` ${toXN(history.length - 1, history.length)},${zeroY}`}
+          fill="url(#portGrad)" />
+        {/* Lignes benchmarks puis portefeuille (en dernier pour être au-dessus) */}
+        {series.slice(1).map((s, si) => (
+          <polyline key={si}
+            points={s.pcts.map((v, i) => `${toXN(i, s.pcts.length)},${toY(v)}`).join(" ")}
+            fill="none" stroke={s.color} strokeWidth={s.width} strokeLinejoin="round" strokeDasharray="5,3" opacity={0.7} />
+        ))}
+        <polyline
+          points={portPct.map((v, i) => `${toXN(i, portPct.length)},${toY(v)}`).join(" ")}
+          fill="none" stroke="#c9a96e" strokeWidth={2.5} strokeLinejoin="round" />
+        {/* Labels X */}
+        {xLabels.map((l, i) => (
+          <text key={i} x={l.x} y={H - 4} textAnchor="middle" fill="#444" fontSize={8}>{l.label}</text>
+        ))}
+        {/* Point final portefeuille */}
+        <circle cx={toXN(portPct.length - 1, portPct.length)} cy={toY(portLast)} r={4} fill={portColor} />
+      </svg>
+    </div>
+  );
+}
+
 function ApiKeySetup({ onSave }) {
   const [key, setKey] = useState("");
   const valid = key.trim().startsWith("sk-");
@@ -220,8 +404,32 @@ function ApiKeySetup({ onSave }) {
   );
 }
 
+// ── Données de démonstration (affichées quand le portefeuille est vide) ──
+// Scénario : achat le 3 février 2026, performance au 6 mars 2026 (~1 mois)
+const DEMO_LINES = [
+  { id:1, ticker:"CW8",   nom:"Amundi MSCI World PEA",      categorie:"ETF World",     qte:68.73, pru:582.00, prixActuel:600.34, cible:40 },
+  { id:2, ticker:"PANX",  nom:"Amundi PEA Nasdaq-100",       categorie:"ETF USA",       qte:58.44, pru:308.00, prixActuel:322.54, cible:18 },
+  { id:3, ticker:"PCEU",  nom:"Amundi PEA Europe Smalls",    categorie:"ETF Europe",    qte:39.87, pru:301.00, prixActuel:309.14, cible:12 },
+  { id:4, ticker:"PIND",  nom:"Amundi PEA MSCI India",       categorie:"ETF Emergents", qte:17.61, pru:568.00, prixActuel:580.57, cible:10 },
+  { id:5, ticker:"PAEEM", nom:"Amundi PEA Émergents",        categorie:"ETF Emergents", qte:27.03, pru:296.00, prixActuel:306.26, cible:8  },
+  { id:6, ticker:"HLT",   nom:"Lyxor Stoxx Europe 600",      categorie:"ETF Europe",    qte:19.55, pru:358.00, prixActuel:369.20, cible:7  },
+  { id:7, ticker:"CASH",  nom:"Liquidités",                  categorie:"Cash",          qte:1,     pru:5000,  prixActuel:5000,   cible:5  },
+];
+// 24 points journaliers (jours de bourse) : Feb 3 → Mar 6 2026
+const DEMO_HISTORY = [
+  {date:"2026-02-03",val:100000},{date:"2026-02-04",val:100280},{date:"2026-02-05",val:99850},
+  {date:"2026-02-06",val:100420},{date:"2026-02-07",val:100890},{date:"2026-02-10",val:100650},
+  {date:"2026-02-11",val:101200},{date:"2026-02-12",val:101750},{date:"2026-02-13",val:101400},
+  {date:"2026-02-14",val:102000},{date:"2026-02-17",val:101600},{date:"2026-02-18",val:102300},
+  {date:"2026-02-19",val:102800},{date:"2026-02-20",val:102200},{date:"2026-02-21",val:102600},
+  {date:"2026-02-24",val:102100},{date:"2026-02-25",val:101800},{date:"2026-02-26",val:102500},
+  {date:"2026-02-27",val:102900},{date:"2026-02-28",val:102500},{date:"2026-03-03",val:103000},
+  {date:"2026-03-04",val:103200},{date:"2026-03-05",val:102800},{date:"2026-03-06",val:103150},
+];
+
 function PEAAgent() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("pea_apikey") || "");
+  const [confirmReset, setConfirmReset] = useState(false);
   const [messages, setMessages] = useState([{
     role: "assistant",
     content: "Bienvenue dans votre Agent PEA Elite 🏦\n\nJe combine les méthodologies de 10 grandes institutions financières mondiales pour construire et piloter votre PEA sur mesure.\n\nPour vous proposer une allocation personnalisée et optimale, j'ai besoin de quelques informations :\n\n• 💰 Capital disponible — Quel est le montant total que vous souhaitez investir ?\n• 🎯 Objectif de rendement — Visez-vous la croissance du capital, des dividendes, ou les deux ?\n• ⚖️ Tolérance au risque — Êtes-vous plutôt prudent, modéré ou dynamique ?\n• 🕐 Horizon d'investissement — Sur combien d'années investissez-vous (3 ans, 5 ans, 10 ans+) ?\n• 📅 Fréquence de versement — Investissement unique ou versements réguliers ? Si réguliers, quel montant mensuel ?\n• 🚫 Exclusions éventuelles — Des secteurs ou pays que vous souhaitez éviter ?\n\nPlus vos réponses sont précises, plus l'allocation sera adaptée à votre profil. Partagez ces informations et je construis votre portefeuille.",
@@ -229,12 +437,26 @@ function PEAAgent() {
   }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat");
-  const [lines, setLines] = useState([]);
-  const [newLine, setNewLine] = useState({ ticker: "", nom: "", categorie: "Action Europe", qte: 0, pru: 0, prixActuel: 0, cible: 0 });
+  const [activeTab, setActiveTab] = useState(() => {
+    // Ouvre le dashboard par défaut si des données existent déjà
+    try { const s = localStorage.getItem("pea_lines"); const p = s ? JSON.parse(s) : null; return (p && p.length > 0) ? "dashboard" : "dashboard"; } catch {}
+    return "dashboard";
+  });
+  const [lines, setLines] = useState(() => {
+    try { const s = localStorage.getItem("pea_lines"); if (s) { const p = JSON.parse(s); if (p && p.length > 0) return p; } } catch {}
+    return DEMO_LINES;
+  });
+  const [newLine, setNewLine] = useState({ ticker: "", nom: "", categorie: "ETF World", qte: 0, pru: 0, prixActuel: 0, cible: 0 });
   const [showAddForm, setShowAddForm] = useState(false);
   const [reallocLoading, setReallocLoading] = useState(false);
   const [reallocResult, setReallocResult] = useState(null);
+  const [priceStatus, setPriceStatus] = useState({}); // { ticker: { price, sources, loading, error } }
+  const [marketFetching, setMarketFetching] = useState(false);
+  const [perfHistory, setPerfHistory] = useState(() => {
+    try { const s = localStorage.getItem("pea_perf_history"); if (s) { const p = JSON.parse(s); if (p && p.length > 1) return p; } } catch {}
+    return DEMO_HISTORY;
+  });
+  const [benchmarks, setBenchmarks] = useState(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -243,7 +465,7 @@ function PEAAgent() {
         const r1 = await window.storage.get("pea_messages");
         if (r1) setMessages(JSON.parse(r1.value));
         const r2 = await window.storage.get("pea_lines");
-        if (r2) setLines(JSON.parse(r2.value));
+        if (r2) { const p = JSON.parse(r2.value); if (p && p.length > 0) setLines(p); }
       } catch (e) { console.error(e); }
     };
     load();
@@ -251,10 +473,31 @@ function PEAAgent() {
 
   useEffect(() => { window.storage.set("pea_messages", JSON.stringify(messages)).catch(() => {}); }, [messages]);
   useEffect(() => { window.storage.set("pea_lines", JSON.stringify(lines)).catch(() => {}); }, [lines]);
+
+  // Enregistre un point d'historique une fois par jour si le portefeuille a une valeur
+  useEffect(() => {
+    if (totalActuel <= 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setPerfHistory(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].date === today) {
+        // Met à jour le point du jour
+        const updated = [...prev];
+        updated[updated.length - 1] = { date: today, val: Math.round(totalActuel) };
+        localStorage.setItem("pea_perf_history", JSON.stringify(updated));
+        return updated;
+      }
+      const updated = [...prev, { date: today, val: Math.round(totalActuel) }].slice(-365);
+      localStorage.setItem("pea_perf_history", JSON.stringify(updated));
+      return updated;
+    });
+  }, [totalActuel]);
   useEffect(() => { messagesEndRef.current && messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
-  const totalActuel = lines.reduce((s, l) => s + (l.ticker === "CASH" ? l.prixActuel : l.qte * l.prixActuel), 0);
-  const totalPRU = lines.reduce((s, l) => s + (l.ticker === "CASH" ? l.pru : l.qte * l.pru), 0);
+  // Pour les lignes importées (_pendingQte), on utilise le montant cible jusqu'au premier fetch
+  const lineVal = l => l.ticker === "CASH" ? l.prixActuel : (l._pendingQte && l._montant ? l._montant : l.qte * l.prixActuel);
+  const linePRU = l => l.ticker === "CASH" ? l.pru : (l._pendingQte && l._montant ? l._montant : l.qte * l.pru);
+  const totalActuel = lines.reduce((s, l) => s + lineVal(l), 0);
+  const totalPRU = lines.reduce((s, l) => s + linePRU(l), 0);
   const totalPnL = totalActuel - totalPRU;
   const totalPnLPct = totalPRU > 0 ? (totalPnL / totalPRU) * 100 : 0;
 
@@ -295,7 +538,261 @@ function PEAAgent() {
     setShowAddForm(false);
   }
 
-  async function callClaude(systemPrompt, userMessages) {
+  // ── Données marché live pour le system prompt (Yahoo query2 + Euronext + ECB) ──
+  async function fetchLiveMarketContext() {
+    const now = new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' });
+
+    // Liste des instruments à surveiller
+    const watchList = [
+      { label: "CW8 (MSCI World PEA)",    ticker: "CW8",       isEtf: true  },
+      { label: "EWLD (MSCI World Lyxor)",  ticker: "EWLD",      isEtf: true  },
+      { label: "PAEEM (Émergents PEA)",    ticker: "PAEEM",     isEtf: true  },
+      { label: "PANX (Nasdaq PEA)",        ticker: "PANX",      isEtf: true  },
+      { label: "CAC 40",                   ticker: "^FCHI",     isEtf: false },
+      { label: "Euro Stoxx 50",            ticker: "^STOXX50E", isEtf: false },
+      { label: "EUR/USD",                  ticker: "EURUSD=X",  isEtf: false },
+    ];
+
+    // Fetch en parallèle : Yahoo (query2) + Euronext Live pour les ETFs
+    const rows = await Promise.all(watchList.map(async ({ label, ticker, isEtf }) => {
+      const p1 = fetchPriceYahoo(ticker).catch(() => null);
+      const p2 = isEtf ? fetchPriceEuronext(ticker).catch(() => null) : Promise.resolve(null);
+      const [yRes, eRes] = await Promise.all([p1, p2]);
+
+      const prices = [];
+      const srcLabels = [];
+      if (yRes?.price)  { prices.push(yRes.price);  srcLabels.push(`Yahoo: ${yRes.price.toFixed(2)}`); }
+      if (eRes?.price)  { prices.push(eRes.price);  srcLabels.push(`Euronext: ${eRes.price.toFixed(2)}`); }
+
+      if (prices.length === 0) return `  • ${label} : N/D`;
+      const med = medianOf(prices);
+      const change = yRes?.change != null ? ` (${yRes.change >= 0 ? "+" : ""}${yRes.change.toFixed(2)}%/j)` : "";
+      const currency = yRes?.currency || "EUR";
+      const srcNote = srcLabels.length ? ` [${srcLabels.join(" · ")}]` : "";
+      return `  • ${label} : ${med.toFixed(2)} ${currency}${change}${srcNote}`;
+    }));
+
+    // ECB API — Euribor 3 mois
+    let euribor = "N/D";
+    try {
+      const r = await fetch("https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT0.MM.EURIBOR3MD_.HSTA?format=jsondata&lastNObservations=1");
+      if (r.ok) {
+        const d = await r.json();
+        const val = d?.dataSets?.[0]?.series?.["0:0:0:0:0:0"]?.observations;
+        if (val) euribor = (Object.values(val)[0]?.[0])?.toFixed(2) + "%" || "N/D";
+      }
+    } catch {}
+
+    const contextLines = [
+      `📅 Date/heure Paris : ${now}`,
+      `🏦 Euribor 3M : ${euribor}`,
+      ``,
+      `📊 ETF & INDICES (Yahoo Finance query2 · Euronext Live — médiane) :`,
+      ...rows,
+    ];
+    return contextLines.join("\n");
+  }
+
+  // ── Fetch benchmarks MSCI World + CAC 40 depuis Yahoo Finance ──
+  async function fetchBenchmarks(startDate) {
+    const symbols = { "MSCI World (CW8)": "CW8.PA", "CAC 40": "^FCHI" };
+    const result = {};
+    const startTs = Math.floor(new Date(startDate).getTime() / 1000);
+    const endTs = Math.floor(Date.now() / 1000);
+    await Promise.all(Object.entries(symbols).map(async ([name, sym]) => {
+      try {
+        const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?period1=${startTs}&period2=${endTs}&interval=1d`;
+        const url = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
+        const r = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!r.ok) return;
+        const d = await r.json();
+        const closes = d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+        if (!closes || closes.length < 2) return;
+        // Filtrer les null
+        result[name] = closes.filter(v => v != null && v > 0);
+      } catch {}
+    }));
+    return result;
+  }
+
+  useEffect(() => {
+    if (perfHistory.length < 2) return;
+    fetchBenchmarks(perfHistory[0].date).then(bm => {
+      if (Object.keys(bm).length > 0) setBenchmarks(bm);
+    }).catch(() => {});
+  }, [perfHistory.length]);
+
+  // ── ISIN mapping Euronext Paris (ETFs PEA courants) ──
+  const ISIN_MAP = {
+    "CW8":"FR0010315770","EWLD":"FR0011869353","PAEEM":"FR0013412020",
+    "PANX":"FR0013412285","LYPS":"FR0011871128","PSP5":"FR0011550185",
+    "LYXIB":"FR0010814343","LCWD":"FR0011882364","BNPP":"FR0000131104",
+    "AIR":"FR0000120073","MC":"FR0000121014","OR":"FR0000120321",
+    "SAN":"FR0000120578","TTE":"FR0000120271","SU":"FR0000121972",
+  };
+  function getIsin(ticker) {
+    const base = ticker.replace(".PA","").toUpperCase();
+    return ISIN_MAP[ticker.toUpperCase()] || ISIN_MAP[base] || null;
+  }
+
+  // ── Sanity check : certaines sources stockent les prix en eurocents (×100) ──
+  function sanitizePrice(raw, ticker) {
+    const p = parseFloat(raw);
+    if (!p || isNaN(p) || p <= 0) return null;
+    // Indices (CAC 40, Eurostoxx) et forex : pas d'ajustement
+    if (ticker && (ticker.startsWith("^") || ticker.includes("=X"))) return p;
+    // ETF/Actions : fourchette raisonnable 1 € – 5 000 €
+    if (p > 5000) {
+      // Probablement stocké en eurocents — on divise par 100
+      const adj = p / 100;
+      return (adj >= 1 && adj <= 5000) ? adj : null;
+    }
+    return p >= 0.1 ? p : null;
+  }
+
+  // Source 1 : Yahoo Finance via corsproxy.io (résout le blocage CORS depuis file://)
+  async function fetchPriceYahoo(ticker) {
+    const sym = ticker.includes(".") ? ticker : ticker + ".PA";
+    const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`;
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
+    const r = await fetch(proxyUrl, { headers: { "Accept": "application/json" } });
+    if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.chart?.error) throw new Error("Yahoo: " + d.chart.error.description);
+    const meta = d?.chart?.result?.[0]?.meta;
+    if (!meta?.regularMarketPrice) throw new Error("Yahoo: prix absent");
+    const price = sanitizePrice(meta.regularMarketPrice, ticker);
+    if (!price) throw new Error(`Yahoo: prix hors plage (${meta.regularMarketPrice})`);
+    return { price, currency: meta.currency || "EUR", change: meta.regularMarketChangePercent, source: "Yahoo Finance" };
+  }
+
+  // Source 2 : Euronext Live API via corsproxy.io
+  async function fetchPriceEuronext(ticker) {
+    const isin = getIsin(ticker);
+    if (!isin) throw new Error("Euronext: ISIN inconnu pour " + ticker);
+    const euronextUrl = `https://live.euronext.com/en/pd/data/quote?isinCode=${isin}&selectedMep=1&ulCode=&type=ETFS`;
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(euronextUrl)}`;
+    const r = await fetch(proxyUrl, { headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
+    if (!r.ok) throw new Error(`Euronext HTTP ${r.status}`);
+    const d = await r.json();
+    // La structure Euronext peut varier : array ou objet direct
+    const raw =
+      d?.last ?? d?.lastPrice ?? d?.last_price ??
+      d?.data?.last ?? d?.data?.lastPrice ??
+      d?.[0]?.last ?? d?.[0]?.lastPrice ?? d?.[0]?.last_price ?? d?.[0]?.intraday_close ??
+      d?.instr?.last ?? d?.price ?? d?.[0]?.price;
+    const price = sanitizePrice(raw, ticker);
+    if (!price) throw new Error(`Euronext: prix absent (reçu: ${JSON.stringify(raw)})`);
+    return { price, currency: "EUR", source: "Euronext" };
+  }
+
+  // Source 3 : Boursorama scraping HTML via corsproxy.io (avec sanity check)
+  async function fetchPriceBoursorama(ticker) {
+    const base = ticker.replace(".PA","").toUpperCase();
+    const boursoSym = "1r" + base;
+    const targetUrl = `https://www.boursorama.com/cours/${boursoSym}/`;
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    const r = await fetch(proxyUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!r.ok) throw new Error(`Boursorama/proxy HTTP ${r.status}`);
+    const html = await r.text();
+    if (!html || html.length < 500) throw new Error("Boursorama: page vide");
+    const patterns = [
+      /itemprop="price"\s+content="([0-9]+[.,][0-9]+)"/i,
+      /data-real-value="([0-9]+[.,][0-9]+)"/,
+      /"regularMarketPrice"\s*:\s*([0-9]+\.?[0-9]*)/,
+      /class="[^"]*c-instrument--last[^"]*"[^>]*>([0-9\s]+[,\.][0-9]+)</i,
+      /data-value="([0-9]+[.,][0-9]+)"/,
+      /"price":"([0-9]+\.?[0-9]*)"/
+    ];
+    for (const pat of patterns) {
+      const m = html.match(pat);
+      if (m) {
+        const raw = parseFloat(m[1].replace(/\s/g,"").replace(",","."));
+        const price = sanitizePrice(raw, ticker);
+        if (price) return { price, currency: "EUR", source: "Boursorama" };
+      }
+    }
+    throw new Error(`Boursorama: prix introuvable (${html.length} octets reçus)`);
+  }
+
+  function medianOf(prices) {
+    const s = [...prices].sort((a,b)=>a-b);
+    const m = Math.floor(s.length/2);
+    return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+  }
+
+  async function fetchPricesForTicker(ticker) {
+    if (ticker === "CASH") return null;
+    const [r1, r2, r3] = await Promise.allSettled([
+      fetchPriceYahoo(ticker),
+      fetchPriceEuronext(ticker),
+      fetchPriceBoursorama(ticker)
+    ]);
+    const ok = [r1,r2,r3].filter(r=>r.status==="fulfilled").map(r=>r.value);
+    const errors = [r1,r2,r3].filter(r=>r.status==="rejected").map(r=>r.reason?.message);
+    if (ok.length === 0) throw new Error("Toutes sources KO : " + errors.join(" | "));
+    const median = medianOf(ok.map(s=>s.price));
+    return { price: median, sources: ok.map(s=>`${s.source}: ${s.price.toFixed(2)}`), errors, count: ok.length };
+  }
+
+  async function refreshAllPrices() {
+    const tickers = lines.filter(l => l.ticker !== "CASH");
+    if (tickers.length === 0) return;
+    const loadingState = {};
+    tickers.forEach(l => { loadingState[l.ticker] = { loading: true }; });
+    setPriceStatus(loadingState);
+    for (const l of tickers) {
+      try {
+        const result = await fetchPricesForTicker(l.ticker);
+        if (result) {
+          setPriceStatus(prev => ({ ...prev, [l.ticker]: { price: result.price, sources: result.sources, errors: result.errors, count: result.count, loading: false } }));
+          setLines(prev => prev.map(line => {
+            if (line.ticker !== l.ticker) return line;
+            if (line._pendingQte && line._montant > 0) {
+              // Calcul de la vraie quantité : montant alloué ÷ prix unitaire réel
+              // PRU estimé = prix actuel (l'utilisateur saisira son vrai prix d'achat)
+              const newQte = Math.round(line._montant / result.price * 10000) / 10000;
+              return { ...line, prixActuel: result.price, qte: newQte, pru: result.price, _pendingQte: false, _pruEstimated: true };
+            }
+            return { ...line, prixActuel: result.price };
+          }));
+        }
+      } catch (e) {
+        setPriceStatus(prev => ({ ...prev, [l.ticker]: { error: e.message, loading: false } }));
+      }
+    }
+  }
+
+  // ── Panneau de test des sources (pour diagnostic) ──
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testResults, setTestResults] = useState(null);
+  const [testRunning, setTestRunning] = useState(false);
+
+  async function runSourceTests() {
+    setTestRunning(true);
+    setTestResults(null);
+    const testTicker = "CW8"; // ticker de référence pour les tests
+    const results = {};
+    const tests = [
+      { name: "Yahoo Finance (query2)", fn: () => fetchPriceYahoo(testTicker) },
+      { name: "Euronext Live API",      fn: () => fetchPriceEuronext(testTicker) },
+      { name: "Boursorama (scraping)",  fn: () => fetchPriceBoursorama(testTicker) },
+    ];
+    for (const t of tests) {
+      const start = Date.now();
+      try {
+        const r = await t.fn();
+        results[t.name] = { ok: true, price: r.price, ms: Date.now()-start };
+      } catch(e) {
+        results[t.name] = { ok: false, error: e.message, ms: Date.now()-start };
+      }
+    }
+    setTestResults(results);
+    setTestRunning(false);
+  }
+
+  // ── Streaming SSE vers l'API Anthropic ──
+  async function streamClaude(systemPrompt, userMessages, onChunk) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -307,13 +804,39 @@ function PEAAgent() {
       body: JSON.stringify({
         model: "claude-opus-4-5-20251101",
         max_tokens: 4096,
+        stream: true,
         system: systemPrompt,
         messages: userMessages
       })
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return { text: data.content?.[0]?.text || "", truncated: data.stop_reason === "max_tokens" };
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || "Erreur API");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const json = JSON.parse(data);
+          if (json.type === "content_block_delta" && json.delta?.type === "text_delta") {
+            fullText += json.delta.text;
+            onChunk(fullText);
+          }
+        } catch {}
+      }
+    }
+    return fullText;
   }
 
   async function sendMessage(text) {
@@ -322,29 +845,52 @@ function PEAAgent() {
     setMessages(newMessages);
     setInput("");
     setLoading(true);
+
+    // Récupérer les données marché live (3 sources) avant d'envoyer
+    setMarketFetching(true);
+    let liveMarketData = "Données marché temporairement indisponibles.";
+    try { liveMarketData = await fetchLiveMarketContext(); } catch {}
+    setMarketFetching(false);
+
+    const liveSystemPrompt = SYSTEM_PROMPT.replace("{{LIVE_MARKET_DATA}}", liveMarketData);
+
+    // Ajoute un message vide qui sera rempli au fil du stream
+    setMessages(prev => [...prev, { role: "assistant", content: "", ts: new Date().toLocaleString('fr-FR'), streaming: true }]);
     try {
-      const { text: txt, truncated } = await callClaude(
-        SYSTEM_PROMPT,
-        newMessages.map(m => ({ role: m.role, content: m.content }))
+      await streamClaude(
+        liveSystemPrompt,
+        newMessages.map(m => ({ role: m.role, content: m.content })),
+        (txt) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { ...updated[updated.length - 1], content: txt };
+            return updated;
+          });
+        }
       );
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: truncated ? txt + "\n\n*(Réponse tronquée)*" : txt,
-        ts: new Date().toLocaleString('fr-FR')
-      }]);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...updated[updated.length - 1], streaming: false };
+        return updated;
+      });
     } catch (e) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `❌ Erreur : ${e.message}\n\nVérifiez votre clé API (bouton 🔑 en haut à droite).`,
-        ts: new Date().toLocaleString('fr-FR')
-      }]);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: "assistant",
+          content: `❌ Erreur : ${e.message}\n\nVérifiez votre clé API (bouton 🔑 en haut à droite).`,
+          ts: new Date().toLocaleString('fr-FR'),
+          streaming: false
+        };
+        return updated;
+      });
     }
     setLoading(false);
   }
 
   async function runRealloc() {
     setReallocLoading(true);
-    setReallocResult(null);
+    setReallocResult("");
     const portfolio = lines.map(l => {
       const val = l.ticker === "CASH" ? l.prixActuel : l.qte * l.prixActuel;
       const pct = totalActuel > 0 ? ((val / totalActuel) * 100).toFixed(1) : 0;
@@ -353,8 +899,11 @@ function PEAAgent() {
     }).join("\n");
     const prompt = `Voici mon portefeuille PEA (valeur totale: ${Math.round(totalActuel).toLocaleString('fr-FR')}€):\n\n${portfolio}\n\nFais une analyse de rééquilibrage mensuel complète.`;
     try {
-      const { text } = await callClaude(REALLOC_PROMPT, [{ role: "user", content: prompt }]);
-      setReallocResult(text);
+      await streamClaude(
+        REALLOC_PROMPT,
+        [{ role: "user", content: prompt }],
+        (txt) => setReallocResult(txt)
+      );
     } catch (e) {
       setReallocResult(`❌ Erreur : ${e.message}`);
     }
@@ -362,16 +911,17 @@ function PEAAgent() {
   }
 
   const lineRows = lines.map(l => {
-    const valActuelle = l.ticker === "CASH" ? l.prixActuel : l.qte * l.prixActuel;
-    const valPRU = l.ticker === "CASH" ? l.pru : l.qte * l.pru;
-    const pnl = valActuelle - valPRU;
-    const pnlPct = valPRU > 0 ? (pnl / valPRU) * 100 : 0;
+    const valActuelle = lineVal(l);
+    const valPRU = linePRU(l);
+    const pnl = l._pendingQte ? 0 : valActuelle - valPRU;
+    const pnlPct = (!l._pendingQte && valPRU > 0) ? (pnl / valPRU) * 100 : 0;
     const pctActuel = totalActuel > 0 ? (valActuelle / totalActuel) * 100 : 0;
     const ecartCible = pctActuel - l.cible;
     return { ...l, valActuelle, pnl, pnlPct, pctActuel, ecartCible };
   });
 
   const hasPendingQte = lines.some(l => l._pendingQte);
+  const hasPruEstimated = lines.some(l => l._pruEstimated);
 
   if (!apiKey) return <ApiKeySetup onSave={saveApiKey} />;
 
@@ -379,6 +929,9 @@ function PEAAgent() {
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0a0a0f 0%,#0d1117 40%,#0a0f0a 100%)", fontFamily: "Georgia,serif", color: "#e8e0d0" }}>
       <style>{`
         @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .cursor{display:inline-block;width:2px;height:1em;background:#c9a96e;margin-left:2px;vertical-align:middle;animation:blink 0.8s infinite}
         @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         .msg-in{animation:fadeIn 0.3s ease}
         textarea,input,select{outline:none}
@@ -410,6 +963,31 @@ function PEAAgent() {
                 {totalPnL >= 0 ? "+" : ""}{Math.round(totalPnL).toLocaleString('fr-FR')} € ({totalPnLPct >= 0 ? "+" : ""}{totalPnLPct.toFixed(2)}%)
               </div>
             </div>
+          )}
+          {confirmReset ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#c9a96e" }}>Effacer le chat ?</span>
+              <button onClick={() => {
+                const initialMsg = [{
+                  role: "assistant",
+                  content: "Bienvenue dans votre Agent PEA Elite 🏦\n\nJe combine les méthodologies de 10 grandes institutions financières mondiales pour construire et piloter votre PEA sur mesure.\n\nPour vous proposer une allocation personnalisée et optimale, j'ai besoin de quelques informations :\n\n• 💰 Capital disponible — Quel est le montant total que vous souhaitez investir ?\n• 🎯 Objectif de rendement — Visez-vous la croissance du capital, des dividendes, ou les deux ?\n• ⚖️ Tolérance au risque — Êtes-vous plutôt prudent, modéré ou dynamique ?\n• 🕐 Horizon d'investissement — Sur combien d'années investissez-vous (3 ans, 5 ans, 10 ans+) ?\n• 📅 Fréquence de versement — Investissement unique ou versements réguliers ? Si réguliers, quel montant mensuel ?\n• 🚫 Exclusions éventuelles — Des secteurs ou pays que vous souhaitez éviter ?\n\nPlus vos réponses sont précises, plus l'allocation sera adaptée à votre profil. Partagez ces informations et je construis votre portefeuille.",
+                  ts: new Date().toLocaleString('fr-FR')
+                }];
+                setMessages(initialMsg);
+                localStorage.setItem("pea_messages", JSON.stringify(initialMsg));
+                setConfirmReset(false);
+              }} style={{ background: "#e05555", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", color: "#fff", fontSize: 12, fontFamily: "inherit" }}>
+                Oui
+              </button>
+              <button onClick={() => setConfirmReset(false)} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", color: "#aaa", fontSize: 12, fontFamily: "inherit" }}>
+                Non
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmReset(true)} title="Remettre le chat à zéro"
+              style={{ background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.2)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#888", fontSize: 14, fontFamily: "inherit" }}>
+              🗑️
+            </button>
           )}
           <button
             onClick={() => { if (window.confirm("Réinitialiser la clé API ?")) { localStorage.removeItem("pea_apikey"); setApiKey(""); } }}
@@ -443,7 +1021,12 @@ function PEAAgent() {
             <>
               {hasPendingQte && (
                 <div style={{ background: "rgba(201,169,110,0.08)", border: "1px solid rgba(201,169,110,0.3)", borderRadius: 10, padding: "12px 18px", marginBottom: 16, fontSize: 13, color: "#c9a96e" }}>
-                  ✏️ <strong>À compléter :</strong> Les lignes importées utilisent le montant comme valeur provisoire. Cliquez sur la quantité et le PRU de chaque action pour renseigner les vraies valeurs.
+                  ⏳ <strong>Quantités à calculer :</strong> Cliquez sur <strong>↻ Prix live</strong> pour récupérer les prix unitaires réels et calculer automatiquement vos quantités à partir des montants alloués.
+                </div>
+              )}
+              {!hasPendingQte && hasPruEstimated && (
+                <div style={{ background: "rgba(74,158,107,0.07)", border: "1px solid rgba(74,158,107,0.3)", borderRadius: 10, padding: "12px 18px", marginBottom: 16, fontSize: 13, color: "#4a9e6b" }}>
+                  ✅ <strong>Quantités calculées depuis les prix live.</strong> Le PRU est estimé au prix actuel (PnL = 0). Cliquez sur chaque <strong>PRU</strong> pour entrer votre vrai prix d'achat et voir votre performance réelle.
                 </div>
               )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
@@ -459,13 +1042,27 @@ function PEAAgent() {
                   </div>
                 ))}
               </div>
+              <PerfChart history={perfHistory} benchmarks={benchmarks} />
+              <PieChart lines={lineRows} total={totalActuel} />
               <div style={{ background: "rgba(15,15,25,0.8)", border: "1px solid rgba(201,169,110,0.2)", borderRadius: 12, overflow: "auto" }}>
                 <div style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(201,169,110,0.15)" }}>
                   <span style={{ fontSize: 13, letterSpacing: "0.1em", color: "#c9a96e", fontWeight: "bold" }}>LIGNES DU PORTEFEUILLE</span>
-                  <button onClick={() => setShowAddForm(!showAddForm)}
-                    style={{ background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#c9a96e", fontSize: 12, fontFamily: "inherit" }}>
-                    {showAddForm ? "✕ Annuler" : "+ Ajouter"}
-                  </button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { setShowTestPanel(true); runSourceTests(); }}
+                      title="Tester la connectivité des sources de prix"
+                      style={{ background: "rgba(106,142,201,0.12)", border: "1px solid rgba(106,142,201,0.35)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#6a8ec9", fontSize: 12, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                      🧪 Tester
+                    </button>
+                    <button onClick={refreshAllPrices}
+                      title="Rafraîchir les prix (Yahoo query2 · Euronext · Boursorama — médiane)"
+                      style={{ background: "rgba(74,158,107,0.12)", border: "1px solid rgba(74,158,107,0.35)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#4a9e6b", fontSize: 12, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                      ↻ Prix live
+                    </button>
+                    <button onClick={() => setShowAddForm(!showAddForm)}
+                      style={{ background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#c9a96e", fontSize: 12, fontFamily: "inherit" }}>
+                      {showAddForm ? "✕ Annuler" : "+ Ajouter"}
+                    </button>
+                  </div>
                 </div>
                 {showAddForm && (
                   <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(201,169,110,0.1)", background: "rgba(201,169,110,0.03)", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
@@ -507,13 +1104,24 @@ function PEAAgent() {
                         <td><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: (CAT_COLORS[l.categorie] || "#888") + "22", color: CAT_COLORS[l.categorie] || "#888", whiteSpace: "nowrap" }}>{l.categorie}</span></td>
                         <td>{l.ticker !== "CASH" ? <EditableCell value={l.qte} onSave={v => updateLine(l.id, "qte", v)} /> : "—"}</td>
                         <td><EditableCell value={l.pru} onSave={v => updateLine(l.id, "pru", v)} suffix=" €" /></td>
-                        <td><EditableCell value={l.prixActuel} onSave={v => updateLine(l.id, "prixActuel", v)} suffix=" €" /></td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end" }}>
+                            <EditableCell value={l.prixActuel} onSave={v => updateLine(l.id, "prixActuel", v)} suffix=" €" />
+                            {priceStatus[l.ticker] && (
+                              priceStatus[l.ticker].loading
+                                ? <span style={{ fontSize: 10, color: "#888" }}>⏳</span>
+                                : priceStatus[l.ticker].error
+                                  ? <span title={priceStatus[l.ticker].error} style={{ fontSize: 10, color: "#e05555", cursor: "help" }}>⚠️</span>
+                                  : <span title={priceStatus[l.ticker].sources?.join(" · ")} style={{ fontSize: 10, color: "#4a9e6b", cursor: "help" }}>✓{priceStatus[l.ticker].count}</span>
+                            )}
+                          </div>
+                        </td>
                         <td style={{ fontFamily: "monospace" }}>{Math.round(l.valActuelle).toLocaleString('fr-FR')} €</td>
                         <td style={{ color: l.pnl >= 0 ? "#4a9e6b" : "#e05555", fontFamily: "monospace" }}>
-                          {l.ticker !== "CASH" ? (l.pnl >= 0 ? "+" : "") + Math.round(l.pnl).toLocaleString('fr-FR') + " €" : "—"}
+                          {l.ticker === "CASH" || l._pendingQte ? "—" : (l.pnl >= 0 ? "+" : "") + Math.round(l.pnl).toLocaleString('fr-FR') + " €"}
                         </td>
                         <td style={{ color: l.pnlPct >= 0 ? "#4a9e6b" : "#e05555", fontFamily: "monospace" }}>
-                          {l.ticker !== "CASH" ? (l.pnlPct >= 0 ? "+" : "") + l.pnlPct.toFixed(1) + "%" : "—"}
+                          {l.ticker === "CASH" || l._pendingQte ? "—" : (l.pnlPct >= 0 ? "+" : "") + l.pnlPct.toFixed(1) + "%"}
                         </td>
                         <td style={{ fontFamily: "monospace" }}>{l.pctActuel.toFixed(1)}%</td>
                         <td><EditableCell value={l.cible} onSave={v => updateLine(l.id, "cible", v)} suffix="%" /></td>
@@ -602,6 +1210,12 @@ function PEAAgent() {
                   <Message msg={msg} onImport={importAllocation} />
                 </div>
               ))}
+              {marketFetching && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 14px", background: "rgba(74,158,107,0.08)", border: "1px solid rgba(74,158,107,0.2)", borderRadius: 10, fontSize: 12, color: "#4a9e6b" }}>
+                  <span style={{ animation: "spin 1.5s linear infinite", display: "inline-block" }}>📡</span>
+                  Récupération des données marché live (Yahoo Finance · Euronext · ECB)…
+                </div>
+              )}
               {loading && (
                 <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 20 }}>
                   <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#1a1a2e,#16213e)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #c9a96e33", fontSize: 14, color: "#c9a96e" }}>∞</div>
@@ -621,6 +1235,78 @@ function PEAAgent() {
                 style={{ flex: 1, background: "rgba(15,15,25,0.8)", border: "1px solid rgba(201,169,110,0.3)", borderRadius: 12, padding: "12px 16px", color: "#e8e0d0", fontSize: 14, fontFamily: "inherit", lineHeight: 1.5, resize: "none" }} />
               <button onClick={() => { if (input.trim()) sendMessage(input.trim()); }} disabled={loading || !input.trim()}
                 style={{ width: 48, height: 48, alignSelf: "flex-end", background: input.trim() && !loading ? "linear-gradient(135deg,#c9a96e,#8b6914)" : "rgba(201,169,110,0.2)", border: "none", borderRadius: 12, cursor: input.trim() && !loading ? "pointer" : "not-allowed", fontSize: 18, color: input.trim() && !loading ? "#000" : "#666" }}>↑</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL TEST DES SOURCES ── */}
+      {showTestPanel && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowTestPanel(false); }}>
+          <div style={{ background: "#0d1117", border: "1px solid rgba(106,142,201,0.4)", borderRadius: 16, padding: "28px 32px", minWidth: 420, maxWidth: 540, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: "bold", color: "#6a8ec9", letterSpacing: "0.06em" }}>🧪 TEST DES SOURCES DE PRIX</div>
+                <div style={{ fontSize: 11, color: "#555", marginTop: 3 }}>Ticker de référence : CW8 (MSCI World PEA)</div>
+              </div>
+              <button onClick={() => setShowTestPanel(false)}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 10px", cursor: "pointer", color: "#888", fontSize: 13, fontFamily: "inherit" }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+              {[
+                { name: "Yahoo Finance (query2)", desc: "JSON API via corsproxy.io" },
+                { name: "Euronext Live API",      desc: "API Euronext Paris via corsproxy.io" },
+                { name: "Boursorama (scraping)",  desc: "HTML scraping via corsproxy.io" },
+              ].map(({ name, desc }) => {
+                const r = testResults?.[name];
+                return (
+                  <div key={name} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ fontSize: 22, width: 28, textAlign: "center", flexShrink: 0 }}>
+                      {!r && testRunning ? "⏳" : r?.ok ? "✅" : r ? "❌" : "–"}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: r?.ok ? "#4a9e6b" : r ? "#e05555" : "#888", fontWeight: "bold" }}>{name}</div>
+                      <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>{desc}</div>
+                      {r?.ok && (
+                        <div style={{ fontSize: 12, color: "#c9a96e", marginTop: 4, fontFamily: "monospace" }}>
+                          Prix : {r.price?.toFixed(2)} € · {r.ms}ms
+                        </div>
+                      )}
+                      {r && !r.ok && (
+                        <div style={{ fontSize: 11, color: "#e05555aa", marginTop: 4, wordBreak: "break-word" }}>
+                          {r.error} · {r.ms}ms
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {testResults && !testRunning && (
+              <div style={{ fontSize: 12, color: "#888", marginBottom: 14, padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 8, borderLeft: "3px solid " + (Object.values(testResults).some(r => r.ok) ? "#4a9e6b" : "#e05555") }}>
+                {(() => {
+                  const ok = Object.values(testResults).filter(r => r.ok).length;
+                  const total = Object.keys(testResults).length;
+                  if (ok === 0) return "⛔ Aucune source disponible. Vérifiez votre connexion internet ou la politique CORS de votre navigateur.";
+                  if (ok === total) return `✅ Toutes les sources fonctionnent — les prix live seront la médiane de ${ok} sources.`;
+                  return `⚠️ ${ok}/${total} sources disponibles — les prix live seront basés sur ${ok === 1 ? "la seule source disponible" : "la médiane des sources OK"}.`;
+                })()}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => { setTestResults(null); runSourceTests(); }} disabled={testRunning}
+                style={{ background: testRunning ? "rgba(106,142,201,0.15)" : "rgba(106,142,201,0.2)", border: "1px solid rgba(106,142,201,0.4)", borderRadius: 8, padding: "8px 18px", cursor: testRunning ? "not-allowed" : "pointer", color: testRunning ? "#555" : "#6a8ec9", fontSize: 13, fontFamily: "inherit" }}>
+                {testRunning ? "⏳ Test en cours…" : "↻ Relancer"}
+              </button>
+              <button onClick={() => setShowTestPanel(false)}
+                style={{ background: "rgba(201,169,110,0.12)", border: "1px solid rgba(201,169,110,0.3)", borderRadius: 8, padding: "8px 18px", cursor: "pointer", color: "#c9a96e", fontSize: 13, fontFamily: "inherit" }}>
+                Fermer
+              </button>
             </div>
           </div>
         </div>

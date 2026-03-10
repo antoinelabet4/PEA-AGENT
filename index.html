@@ -413,24 +413,17 @@ function ApiKeySetup({ onSave }) {
 // ── Données de démonstration (affichées quand le portefeuille est vide) ──
 // Scénario : achat le 3 février 2026, performance au 6 mars 2026 (~1 mois)
 const DEMO_LINES = [
-  { id:1, ticker:"CW8",   nom:"Amundi MSCI World PEA",      categorie:"ETF World",     qte:68.73, pru:582.00, prixActuel:600.34, cible:40 },
-  { id:2, ticker:"PANX",  nom:"Amundi PEA Nasdaq-100",       categorie:"ETF USA",       qte:58.44, pru:308.00, prixActuel:322.54, cible:18 },
-  { id:3, ticker:"PCEU",  nom:"Amundi PEA Europe Smalls",    categorie:"ETF Europe",    qte:39.87, pru:301.00, prixActuel:309.14, cible:12 },
-  { id:4, ticker:"PIND",  nom:"Amundi PEA MSCI India",       categorie:"ETF Emergents", qte:17.61, pru:568.00, prixActuel:580.57, cible:10 },
-  { id:5, ticker:"PAEEM", nom:"Amundi PEA Émergents",        categorie:"ETF Emergents", qte:27.03, pru:296.00, prixActuel:306.26, cible:8  },
-  { id:6, ticker:"HLT",   nom:"Lyxor Stoxx Europe 600",      categorie:"ETF Europe",    qte:19.55, pru:358.00, prixActuel:369.20, cible:7  },
-  { id:7, ticker:"CASH",  nom:"Liquidités",                  categorie:"Cash",          qte:1,     pru:5000,  prixActuel:5000,   cible:5  },
+  { id:1, ticker:"CW8",   nom:"Amundi MSCI World PEA",      categorie:"ETF World",     qte:100,  pru:500.00, prixActuel:520.00, cible:40 },
+  { id:2, ticker:"PANX",  nom:"Amundi PEA Nasdaq-100",       categorie:"ETF USA",       qte:50,   pru:300.00, prixActuel:315.00, cible:20 },
+  { id:3, ticker:"PCEU",  nom:"Amundi PEA Europe",           categorie:"ETF Europe",    qte:50,   pru:280.00, prixActuel:290.00, cible:15 },
+  { id:4, ticker:"PAEEM", nom:"Amundi PEA Émergents",        categorie:"ETF Emergents", qte:40,   pru:250.00, prixActuel:260.00, cible:15 },
+  { id:5, ticker:"CASH",  nom:"Liquidités",                  categorie:"Cash",          qte:1,    pru:5000,   prixActuel:5000,   cible:10 },
 ];
-// 24 points journaliers (jours de bourse) : Feb 3 → Mar 6 2026
+// Historique de démonstration (remplacé par vos données réelles au fil du temps)
 const DEMO_HISTORY = [
-  {date:"2026-02-03",val:100000},{date:"2026-02-04",val:100280},{date:"2026-02-05",val:99850},
-  {date:"2026-02-06",val:100420},{date:"2026-02-07",val:100890},{date:"2026-02-10",val:100650},
-  {date:"2026-02-11",val:101200},{date:"2026-02-12",val:101750},{date:"2026-02-13",val:101400},
-  {date:"2026-02-14",val:102000},{date:"2026-02-17",val:101600},{date:"2026-02-18",val:102300},
-  {date:"2026-02-19",val:102800},{date:"2026-02-20",val:102200},{date:"2026-02-21",val:102600},
-  {date:"2026-02-24",val:102100},{date:"2026-02-25",val:101800},{date:"2026-02-26",val:102500},
-  {date:"2026-02-27",val:102900},{date:"2026-02-28",val:102500},{date:"2026-03-03",val:103000},
-  {date:"2026-03-04",val:103200},{date:"2026-03-05",val:102800},{date:"2026-03-06",val:103150},
+  {date:"2024-01-01",val:60000},{date:"2024-04-01",val:65000},{date:"2024-07-01",val:68000},
+  {date:"2024-10-01",val:72000},{date:"2025-01-01",val:75000},{date:"2025-04-01",val:80000},
+  {date:"2025-07-01",val:84000},{date:"2025-10-01",val:88000},{date:"2026-01-01",val:93000},
 ];
 
 // ── Utilitaires performance ──
@@ -1354,12 +1347,11 @@ function ImmoModule({ biens, setBiens }) {
 
 // ── CTO : Démo, prompts et config ──
 const CTO_DEMO_LINES = [
-  { id:1, ticker:"AAPL",  nom:"Apple Inc.",           categorie:"Action USA",    qte:5,   pru:182.00, prixActuel:195.00, cible:20, transactions:[] },
-  { id:2, ticker:"MSFT",  nom:"Microsoft Corp.",       categorie:"Action USA",    qte:4,   pru:392.00, prixActuel:425.00, cible:18, transactions:[] },
-  { id:3, ticker:"CW8",   nom:"Amundi MSCI World",     categorie:"ETF World",     qte:40,  pru:455.00, prixActuel:478.00, cible:30, transactions:[] },
-  { id:4, ticker:"AMZN",  nom:"Amazon.com Inc.",       categorie:"Action USA",    qte:6,   pru:175.00, prixActuel:208.00, cible:12, transactions:[] },
-  { id:5, ticker:"MC",    nom:"LVMH Moët Hennessy",    categorie:"Action Europe", qte:3,   pru:740.00, prixActuel:685.00, cible:12, transactions:[] },
-  { id:6, ticker:"CASH",  nom:"Liquidités",            categorie:"Cash",          qte:1,   pru:8000,   prixActuel:8000,   cible:8,  transactions:[] },
+  { id:1, ticker:"AAPL",  nom:"Apple Inc.",           categorie:"Action USA",    qte:10,  pru:150.00, prixActuel:165.00, cible:20, transactions:[] },
+  { id:2, ticker:"MSFT",  nom:"Microsoft Corp.",       categorie:"Action USA",    qte:8,   pru:350.00, prixActuel:370.00, cible:20, transactions:[] },
+  { id:3, ticker:"CW8",   nom:"Amundi MSCI World",     categorie:"ETF World",     qte:30,  pru:450.00, prixActuel:470.00, cible:30, transactions:[] },
+  { id:4, ticker:"AMZN",  nom:"Amazon.com Inc.",       categorie:"Action USA",    qte:5,   pru:160.00, prixActuel:175.00, cible:15, transactions:[] },
+  { id:5, ticker:"CASH",  nom:"Liquidités",            categorie:"Cash",          qte:1,   pru:5000,   prixActuel:5000,   cible:15, transactions:[] },
 ];
 
 const CTO_QUICK_PROMPTS = [
@@ -1749,9 +1741,11 @@ function PortfolioModule({ type, apiKey, onTotalChange }) {
   const [lines, setLines] = useState(() => {
     try {
       const s = localStorage.getItem(`${cfg.prefix}_lines`);
-      if (s) {
+      // s === null → première visite → montrer le démo
+      // s === "[]" → utilisateur a vidé son portefeuille → retourner []
+      if (s !== null) {
         const p = JSON.parse(s);
-        if (p && p.length > 0) return p;
+        return Array.isArray(p) ? p : [];
       }
     } catch {}
     return DEMO_LINES_VAR;
@@ -2006,36 +2000,48 @@ function PortfolioModule({ type, apiKey, onTotalChange }) {
     }
   };
 
-  const sendMessage = () => {
-    const userMsg = input.trim();
+  const sendMessage = (overrideText) => {
+    const userMsg = (overrideText !== undefined ? overrideText : input).trim();
     if (!userMsg) return;
     if (!apiKey) {
       alert("Veuillez configurer votre clé API");
       return;
     }
+    if (overrideText === undefined) setInput("");
 
     const portfolioContext = lineRows.length > 0
-      ? `Portefeuille actuel ${cfg.label}:\n${lineRows.map(l => `- ${l.ticker} ${l.nom}: ${l.qte}u @ ${l.pru.toFixed(2)}€ PRU → ${l.prixActuel.toFixed(2)}€ (cible: ${l.cible}%)`).join("\n")}\nTotal: ${totalActuel.toFixed(2)}€ | P&L: ${totalPnL.toFixed(2)}€ (${totalPnLPct.toFixed(1)}%)`
+      ? `Portefeuille actuel ${cfg.label}:\n${lineRows.map(l => `- ${l.ticker} ${l.nom}: ${parseFloat(l.qte||0)}u @ ${parseFloat(l.pru||0).toFixed(2)}€ PRU → ${parseFloat(l.prixActuel||0).toFixed(2)}€ (cible: ${l.cible||0}%)`).join("\n")}\nTotal: ${totalActuel.toFixed(2)}€ | P&L: ${totalPnL.toFixed(2)}€ (${totalPnLPct.toFixed(1)}%)`
       : `Portefeuille ${cfg.label} vide`;
 
     const augmentedMsg = `${userMsg}\n\n[${portfolioContext}]`;
     streamClaude(augmentedMsg, SYSTEM_PROMPT_VAR);
   };
 
-  const runRealloc = () => {
-    if (!apiKey) {
-      alert("Veuillez configurer votre clé API");
-      return;
-    }
+  const runRealloc = async () => {
+    if (!apiKey) { alert("Veuillez configurer votre clé API"); return; }
     setReallocLoading(true);
+    setReallocResult(null);
 
     const portfolioContext = lineRows.map(l =>
-      `- ${l.ticker} ${l.nom}: ${l.qte}u @ ${l.pru.toFixed(2)}€ PRU → ${l.prixActuel.toFixed(2)}€ (cible: ${l.cible}%, P&L: ${l.pnl.toFixed(2)}€)`
+      `- ${l.ticker} ${l.nom}: ${parseFloat(l.qte||0)}u @ ${parseFloat(l.pru||0).toFixed(2)}€ PRU → ${parseFloat(l.prixActuel||0).toFixed(2)}€ (cible: ${l.cible||0}%, P&L: ${l.pnl.toFixed(2)}€)`
     ).join("\n");
 
     const msg = `Rééquilibre mensuel du portefeuille ${cfg.label}:\n${portfolioContext}\n\nTotal: ${totalActuel.toFixed(2)}€ | Perf globale: ${totalPnLPct.toFixed(1)}%`;
 
-    streamClaude(msg, REALLOC_PROMPT_VAR).then(() => setReallocLoading(false)).catch(() => setReallocLoading(false));
+    try {
+      const marketData = await fetchLiveMarketContext().catch(() => "Données indisponibles");
+      const systemFinal = REALLOC_PROMPT_VAR.replace("{{LIVE_MARKET_DATA}}", marketData);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: "claude-opus-4-5-20251101", max_tokens: 2000, system: systemFinal, messages: [{ role: "user", content: msg }] })
+      });
+      const data = await res.json();
+      setReallocResult(data.content?.[0]?.text || "Erreur lors de l'analyse.");
+    } catch(e) {
+      setReallocResult("Erreur : " + e.message);
+    }
+    setReallocLoading(false);
   };
 
   const refreshAllPrices = async () => {
@@ -2354,7 +2360,7 @@ function PortfolioModule({ type, apiKey, onTotalChange }) {
 
           <div style={{ marginBottom: 10 }}>
             {QUICK_PROMPTS_VAR.slice(0, 4).map((prompt, idx) => (
-              <button key={idx} onClick={() => { setInput(prompt.text); setTimeout(() => { setInput(""); sendMessage(); }, 0); }} style={{ marginRight: 8, marginBottom: 8, background: "rgba(168,196,232,0.1)", border: "1px solid rgba(168,196,232,0.3)", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#a8c4e8", fontSize: 11, fontFamily: "inherit" }}>
+              <button key={idx} onClick={() => sendMessage(prompt.text)} style={{ marginRight: 8, marginBottom: 8, background: "rgba(168,196,232,0.1)", border: "1px solid rgba(168,196,232,0.3)", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#a8c4e8", fontSize: 11, fontFamily: "inherit" }}>
                 {prompt.icon} {prompt.label}
               </button>
             ))}
@@ -3338,7 +3344,7 @@ function PEAAgent() {
 
   // Immobilier state (remonté pour totalisation dans le header)
   const [immoBiens, setImmoBiens] = useState(() => {
-    try { const s = localStorage.getItem("mpb_biens"); if (s) { const p = JSON.parse(s); if (p && p.length > 0) return p; } } catch {}
+    try { const s = localStorage.getItem("mpb_biens"); if (s !== null) { const p = JSON.parse(s); return Array.isArray(p) ? p : []; } } catch {}
     return [];
   });
   useEffect(() => { localStorage.setItem("mpb_biens", JSON.stringify(immoBiens)); }, [immoBiens]);

@@ -412,19 +412,8 @@ function ApiKeySetup({ onSave }) {
 
 // ── Données de démonstration (affichées quand le portefeuille est vide) ──
 // Scénario : achat le 3 février 2026, performance au 6 mars 2026 (~1 mois)
-const DEMO_LINES = [
-  { id:1, ticker:"CW8",   nom:"Amundi MSCI World PEA",      categorie:"ETF World",     qte:100,  pru:500.00, prixActuel:520.00, cible:40 },
-  { id:2, ticker:"PANX",  nom:"Amundi PEA Nasdaq-100",       categorie:"ETF USA",       qte:50,   pru:300.00, prixActuel:315.00, cible:20 },
-  { id:3, ticker:"PCEU",  nom:"Amundi PEA Europe",           categorie:"ETF Europe",    qte:50,   pru:280.00, prixActuel:290.00, cible:15 },
-  { id:4, ticker:"PAEEM", nom:"Amundi PEA Émergents",        categorie:"ETF Emergents", qte:40,   pru:250.00, prixActuel:260.00, cible:15 },
-  { id:5, ticker:"CASH",  nom:"Liquidités",                  categorie:"Cash",          qte:1,    pru:5000,   prixActuel:5000,   cible:10 },
-];
-// Historique de démonstration (remplacé par vos données réelles au fil du temps)
-const DEMO_HISTORY = [
-  {date:"2024-01-01",val:60000},{date:"2024-04-01",val:65000},{date:"2024-07-01",val:68000},
-  {date:"2024-10-01",val:72000},{date:"2025-01-01",val:75000},{date:"2025-04-01",val:80000},
-  {date:"2025-07-01",val:84000},{date:"2025-10-01",val:88000},{date:"2026-01-01",val:93000},
-];
+const DEMO_LINES = [];
+const DEMO_HISTORY = [];
 
 // ── Utilitaires performance ──
 function calcWeightedPRU(transactions) {
@@ -1346,13 +1335,7 @@ function ImmoModule({ biens, setBiens }) {
 
 
 // ── CTO : Démo, prompts et config ──
-const CTO_DEMO_LINES = [
-  { id:1, ticker:"AAPL",  nom:"Apple Inc.",           categorie:"Action USA",    qte:10,  pru:150.00, prixActuel:165.00, cible:20, transactions:[] },
-  { id:2, ticker:"MSFT",  nom:"Microsoft Corp.",       categorie:"Action USA",    qte:8,   pru:350.00, prixActuel:370.00, cible:20, transactions:[] },
-  { id:3, ticker:"CW8",   nom:"Amundi MSCI World",     categorie:"ETF World",     qte:30,  pru:450.00, prixActuel:470.00, cible:30, transactions:[] },
-  { id:4, ticker:"AMZN",  nom:"Amazon.com Inc.",       categorie:"Action USA",    qte:5,   pru:160.00, prixActuel:175.00, cible:15, transactions:[] },
-  { id:5, ticker:"CASH",  nom:"Liquidités",            categorie:"Cash",          qte:1,   pru:5000,   prixActuel:5000,   cible:15, transactions:[] },
-];
+const CTO_DEMO_LINES = [];
 
 const CTO_QUICK_PROMPTS = [
   { icon: "📊", label: "Allocation optimale", text: "Donne-moi l'allocation optimale pour un CTO de 100k€ visant 10-12%/an avec un risque modéré. Inclus les meilleures actions mondiales (US + Europe) et ETF." },
@@ -1406,14 +1389,7 @@ Analyse et fournis :
 Réponds en français. Sois précis et actionnable.`;
 
 // ── ASSURANCE VIE : Démo, prompts et config ──
-const AV_DEMO_LINES = [
-  { id:1, ticker:"EUROS",  nom:"Fonds Euros Sécurité",       categorie:"Fonds Euros",   qte:1,   pru:35000, prixActuel:36400, cible:35, transactions:[] },
-  { id:2, ticker:"CW8",    nom:"Amundi MSCI World UC",        categorie:"UC Actions",    qte:35,  pru:450,   prixActuel:478,   cible:25, transactions:[] },
-  { id:3, ticker:"LYMTX",  nom:"Lyxor MSCI EM UC",           categorie:"UC Actions",    qte:40,  pru:280,   prixActuel:295,   cible:10, transactions:[] },
-  { id:4, ticker:"SCPI1",  nom:"SCPI Bureaux Premium",        categorie:"UC Immobilier", qte:10,  pru:1000,  prixActuel:980,   cible:15, transactions:[] },
-  { id:5, ticker:"OBLG",   nom:"Fonds Oblig. Invest. Grade",  categorie:"UC Obligations",qte:1,   pru:12000, prixActuel:12450, cible:10, transactions:[] },
-  { id:6, ticker:"CASH",   nom:"Liquidités",                  categorie:"Cash",          qte:1,   pru:5000,  prixActuel:5000,  cible:5,  transactions:[] },
-];
+const AV_DEMO_LINES = [];
 
 const AV_QUICK_PROMPTS = [
   { icon: "📊", label: "Allocation optimale", text: "Construis l'allocation optimale pour mon assurance-vie de 100k€ sur un horizon 10 ans+. Optimise la répartition fonds euros / UC en fonction de mon profil et des avantages fiscaux après 8 ans." },
